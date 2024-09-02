@@ -98,13 +98,13 @@ static func _char_binary_search(ch: int, array: PackedInt32Array) -> bool:
 	return false;
 
 static func is_unicode_identifier_start(ch: int) -> bool:
-	#if is_ascii_identifier(ch):
-	#	return true;
+	if is_ascii_identifier(ch):
+		return true;
 	return _char_binary_search(ch, _xid_start);
 
 static func is_unicode_identifier_continue(ch: int) -> bool:
-	#if is_ascii_alphanumeric(ch) or ch == UNDERSCORE:
-	#	return true;
+	if is_ascii_alphanumeric(ch) or ch == UNDERSCORE:
+		return true;
 	return _char_binary_search(ch, _xid_continue);
 
 static func is_unicode_upper_case(ch: int) -> bool:
