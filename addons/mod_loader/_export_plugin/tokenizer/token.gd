@@ -14,14 +14,14 @@ var rightmost_column: int = 0;
 var source: String = String();
 
 func _init(_type: Type) -> void:
-	self.type = _type;
+	type = _type;
 
 func get_name() -> String:
-	assert(self.type >= 0 && self.type < TOKEN_NAMES.size());
-	return TOKEN_NAMES[self.type];
+	assert(type >= 0 && type < TOKEN_NAMES.size());
+	return TOKEN_NAMES[type];
 
 func can_precede_bin_op() -> bool:
-	match self.type:
+	match type:
 		Type.IDENTIFIER, Type.LITERAL, Type.SELF, \
 		Type.BRACKET_CLOSE, Type.BRACE_CLOSE, Type.PARENTHESIS_CLOSE, \
 		Type.CONST_PI, Type.CONST_TAU, Type.CONST_INF, Type.CONST_NAN:
@@ -36,7 +36,7 @@ func is_identifier() -> bool:
 	# MATCH: Used in String.match().
 	# WHEN: New keyword, avoid breaking existing code.
 	# Allow constants to be treated as regular identifiers.
-	match self.type:
+	match type:
 		Type.IDENTIFIER, \
 		Type.MATCH, \
 		Type.WHEN, \
@@ -97,7 +97,7 @@ func is_node_name() -> bool:
 
 # TODO: String or StringName?
 func get_identifier() -> StringName:
-	return self.literal;
+	return literal;
 
 func _to_string() -> String:
-	return self.get_name();
+	return get_name();
