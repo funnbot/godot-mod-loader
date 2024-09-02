@@ -30,7 +30,7 @@ var _source: String = "";
 ## value of `_peek()`, updated by `_advance()`
 var _current_char: int = Codepoint.NULL;
 ## value of `_peek(-1)`, updated by `_advance()`
-var _previous_char: int = Codepoint.NULL;
+var _consumed_char: int = Codepoint.NULL;
 
 var _line: int = -1;
 var _column: int = -1;
@@ -92,7 +92,7 @@ func set_source_code(source: String) -> void:
 		_current_char = Codepoint.NULL;
 	else:
 		_current_char = _source.unicode_at(0);
-	_previous_char = Codepoint.NULL;
+	_consumed_char = Codepoint.NULL;
 	_line = 1;
 	_column = 1;
 	_index = 0;
@@ -132,7 +132,7 @@ func _has_error() -> bool:
 func _advance() -> int:
 	if _is_at_end():
 		return Codepoint.NULL;
-	_previous_char = _current_char;
+	_consumed_char = _current_char;
 	_column += 1;
 	_index += 1;
 	if (_column > _rightmost_column):
@@ -434,17 +434,17 @@ func _string() -> Token:
 	var is_multiline: bool = false;
 	var type: StringType = StringType.REGULAR;
 
-	if _previous_char == Codepoint.LO_R:
+	if _consumed_char == Codepoint.LO_R:
 		is_raw = true;
 		_advance();
-	elif _previous_char == Codepoint.AMPERSAND:
+	elif _consumed_char == Codepoint.AMPERSAND:
 		type = StringType.STRING_NAME;
 		_advance();
-	elif _previous_char == Codepoint.CARET:
+	elif _consumed_char == Codepoint.CARET:
 		type = StringType.NODEPATH;
 		_advance();
 
-	var quote_char: int = _previous_char;
+	var quote_char: int = _consumed_char;
 
 	if _current_char == quote_char and _peek(1) == quote_char:
 		is_multiline = true;
@@ -817,7 +817,7 @@ func scan() -> Token:
 	
 	_advance();
 
-	if _previous_char == Codepoint.BACKSLASH:
+	if _consumed_char == Codepoint.BACKSLASH:
 		# line continuation with backslash
 		if _current_char == Codepoint.CARRIAGE_RETURN:
 			if _peek(1) != Codepoint.LINE_FEED:
@@ -834,14 +834,14 @@ func scan() -> Token:
 	
 	_line_continuation = false;
 
-	if Codepoint.is_digit(_previous_char):
+	if Codepoint.is_digit(_consumed_char):
 		return _number();
-	elif _previous_char == Codepoint.LO_R and (_current_char == Codepoint.SINGLE_QUOTE or _current_char == Codepoint.DOUBLE_QUOTE):
+	elif _consumed_char == Codepoint.LO_R and (_current_char == Codepoint.SINGLE_QUOTE or _current_char == Codepoint.DOUBLE_QUOTE):
 		return _string();
-	elif Codepoint.is_unicode_identifier_start(_previous_char):
+	elif Codepoint.is_unicode_identifier_start(_consumed_char):
 		return _potential_identifier();
 	
-	match _previous_char:
+	match _consumed_char:
 		Codepoint.DOUBLE_QUOTE, Codepoint.SINGLE_QUOTE:
 			return _string();
 		Codepoint.AT:
@@ -968,7 +968,7 @@ func scan() -> Token:
 					return _check_vcs_marker(Codepoint.GREATER_THAN, Type.GREATER_GREATER);
 			return _make_token(Type.GREATER);
 		_:
-			if Codepoint.is_whitespace(_previous_char):
-				return _push_error("Invalid white space character U+%04X." % _previous_char);
+			if Codepoint.is_whitespace(_consumed_char):
+				return _push_error("Invalid white space character U+%04X." % _consumed_char);
 			else:
 				return _push_error("Invalid character \"%c\" (U+%04X)." % [_current_char, _current_char]);
