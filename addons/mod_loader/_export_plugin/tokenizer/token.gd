@@ -9,9 +9,11 @@ var end_line: int = 0;
 var start_column: int = 0;
 var end_column: int = 0;
 # column span for multiline tokens
-var leftmost_column: int = 0;
-var rightmost_column: int = 0;
+# var leftmost_column: int = 0;
+# var rightmost_column: int = 0;
 var source: String = String();
+var start_index: int = -1;
+var end_index: int = -1;
 
 func _init(_type: Type) -> void:
 	type = _type;
@@ -45,7 +47,6 @@ func is_identifier() -> bool:
 		_:
 			return false;
 
-## public
 func is_node_name() -> bool:
 	# This is meant to allow keywords with the $ notation, but not as general identifiers.
 	match type:
@@ -91,6 +92,13 @@ func is_node_name() -> bool:
 		Type.WHILE, \
 		Type.WHEN, \
 		Type.YIELD:
+			return true;
+		_:
+			return false;
+
+func is_whitespace() -> bool:
+	match type:
+		Type.NEWLINE, Type.DEDENT, Type.INDENT:
 			return true;
 		_:
 			return false;

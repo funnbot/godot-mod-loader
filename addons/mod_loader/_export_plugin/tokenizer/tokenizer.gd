@@ -1,3 +1,7 @@
+## Tokenizer for GDScript
+## Call set_source_code() then scan() to get tokens
+## Instance cannot be reused for multiple source strings
+
 const Token = preload("res://addons/mod_loader/_export_plugin/tokenizer/token.gd");
 const Type = Token.Type;
 const Codepoint = preload("res://addons/mod_loader/_export_plugin/tokenizer/codepoint.gd");
@@ -43,13 +47,13 @@ var _start_index: int = -1;
 var _start_line: int = 0;
 var _start_column: int = 0;
 # multiline tokens
-var _leftmost_column: int = 0;
-var _rightmost_column: int = 0;
+# var _leftmost_column: int = 0;
+# var _rightmost_column: int = 0;
 
 # == info cache ==
 var _line_continuation: bool = false; # previous line ends with '\'
 var _multiline_mode: bool = false;
-var _error_stack: Array[Token] = [];
+var _has_error: bool = false;
 var _pending_newline: bool = false;
 var _last_token: Token = Token.new(Type.EMPTY);
 var _last_newline: Token = Token.new(Type.EMPTY);
@@ -99,6 +103,7 @@ func set_source_code(source: String) -> void:
 
 ## public
 ## the parser keeps a multiline_stack
+## in multiline mode indentation is not checked, and newlines are not emitted
 func set_multiline_mode(state: bool) -> void:
 	_multiline_mode = state;
 
@@ -126,17 +131,14 @@ func _peek(offset: int = 0) -> int:
 func _indent_level() -> int:
 	return _indent_stack.a.size();
 
-func _has_error() -> bool:
-	return not _error_stack.is_empty();
-
 func _advance() -> int:
 	if _is_at_end():
 		return Codepoint.NULL;
 	_consumed_char = _current_char;
 	_column += 1;
 	_index += 1;
-	if (_column > _rightmost_column):
-		_rightmost_column = _column;
+	# if (_column > _rightmost_column):
+	# 	_rightmost_column = _column;
 	if _is_at_end():
 		_newline(true);
 		_check_indent();
@@ -166,11 +168,13 @@ func _make_token(type: Type) -> Token:
 	token.end_line = _line;
 	token.start_column = _start_column;
 	token.end_column = _column;
-	token.leftmost_column = _leftmost_column;
-	token.rightmost_column = _rightmost_column;
+	# token.leftmost_column = _leftmost_column;
+	# token.rightmost_column = _rightmost_column;
 	# _current == _source[_index]
 	# _start == _source[_start_index] 
 	token.source = _source.substr(_start_index, _index - _start_index);
+	token.start_index = _start_index;
+	token.end_index = _index;
 
 	_last_token = token;
 	return token;
@@ -283,15 +287,15 @@ func _newline(_make_token: bool) -> void:
 		token.end_line = _line;
 		token.start_column = _column - 1;
 		token.end_column = _column;
-		token.leftmost_column = token.start_column;
-		token.rightmost_column = token.end_column;
+		# token.leftmost_column = token.start_column;
+		# token.rightmost_column = token.end_column;
 		_pending_newline = true;
 		_last_token = token;
 		_last_newline = token;
 
 	_line += 1;
 	_column = 1;
-	_leftmost_column = 1;
+	# _leftmost_column = 1;
 
 func _number() -> Token:
 	var base: int = 10;
@@ -778,8 +782,8 @@ func _skip_whitespace() -> void:
 
 ## public
 func scan() -> Token:
-	if _has_error():
-		return _error_stack.pop_back();
+	if _has_error:
+		return Token.new(Type.ERROR);
 	
 	_skip_whitespace();
 
@@ -788,19 +792,19 @@ func scan() -> Token:
 		if not _multiline_mode:
 			return _last_newline;
 	
-	if _has_error():
-		return _error_stack.pop_back();
+	if _has_error:
+		return Token.new(Type.ERROR);
 	
 	_start_index = _index;
 	_start_line = _line;
 	_start_column = _column;
-	_leftmost_column = _column;
-	_rightmost_column = _column;
+	# _leftmost_column = _column;
+	# _rightmost_column = _column;
 
 	if _pending_indents != 0:
 		_start_index -= _start_column - 1;
 		_start_column = 1;
-		_leftmost_column = 1;
+		# _leftmost_column = 1;
 		if _pending_indents > 0:
 			_pending_indents -= 1;
 			return _make_token(Type.INDENT);
@@ -809,7 +813,7 @@ func scan() -> Token:
 			_pending_indents += 1;
 			var dedent: Token = _make_token(Type.DEDENT);
 			dedent.end_column += 1;
-			dedent.rightmost_column += 1;
+			# dedent.rightmost_column += 1;
 			return dedent;
 	
 	if _is_at_end():
