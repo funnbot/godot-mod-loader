@@ -185,32 +185,18 @@ func _make_identifier(identifier: StringName) -> Token:
 	token.literal = identifier;
 	return token;
 
-func _make_error(message: String) -> Token:
-	var token: Token = _make_token(Type.ERROR);
-	token.literal = message;
-	return token;
-
-func _report_error(error: Variant) -> void:
-	if error is Token:
-		_error_stack.push_back(error);
-	elif error is String:
-		_error_stack.push_back(_make_error(error));
-	else:
-		assert(false);
-		push_error('Invalid error type: ' + str(typeof(error)));
-
-func _report_char_error(message: String) -> void:
-	var token: Token = _make_error(message);
-	token.start_column = _column;
-	token.leftmost_column = _column;
-	token.end_column = _column + 1;
-	token.rightmost_column = _column + 1;
-	_report_error(token);
+func _push_error(message: String) -> Token:
+	if not OS.is_debug_build():
+		push_error(message);
+	# pause execution in debug builds, but gets removed in release builds
+	assert(false, message);
+	# still return a token to shorten some lines
+	return Token.new(Type.ERROR);
 
 func _make_paren_error(paren: int) -> Token:
 	if _paren_stack.is_empty():
-		return _make_error("Closing \"%s\" doesn't have an opening counterpart." % String.chr(paren));
-	var token: Token = _make_error("Closing \"%s\" doesn't match opening \"%s\"." %
+		return _push_error("Closing \"%s\" doesn't have an opening counterpart." % String.chr(paren));
+	var token: Token = _push_error("Closing \"%s\" doesn't match opening \"%s\"." %
 		[String.chr(paren), String.chr(_paren_stack.back())]);
 	return token;
 
@@ -339,7 +325,7 @@ func _number() -> Token:
 	ch = _peek();
 	# disallow `0x_` and `0b_`
 	if base != 10 and ch == Codepoint.UNDERSCORE:
-		_report_char_error("Unexpected underscore after 0%c" % _peek(-1));
+		_push_error("Unexpected underscore after 0%c" % _peek(-1));
 		has_error = true;
 
 	var previous_was_underscore: bool = false;
@@ -349,7 +335,7 @@ func _number() -> Token:
 
 		if _current_char == Codepoint.UNDERSCORE:
 			if previous_was_underscore:
-				_report_char_error("Multiple underscores cannot be adjacent in a numeric literal.");
+				_push_error("Multiple underscores cannot be adjacent in a numeric literal.");
 				# not a fatal error
 			previous_was_underscore = true;
 		else:
@@ -364,13 +350,13 @@ func _number() -> Token:
 		if base == 10 and not has_decimal:
 			has_decimal = true;
 		elif base == 10:
-			_report_char_error("Cannot use a decimal point twice in a _number.");
+			_push_error("Cannot use a decimal point twice in a _number.");
 			has_error = true;
 		elif base == 16:
-			_report_char_error("Cannot use a decimal point in a hexadecimal _number.");
+			_push_error("Cannot use a decimal point in a hexadecimal _number.");
 			has_error = true;
 		else:
-			_report_char_error("Cannot use a decimal point in a binary _number.");
+			_push_error("Cannot use a decimal point in a binary _number.");
 			has_error = true;
 		if not has_error:
 			_advance();
@@ -380,14 +366,14 @@ func _number() -> Token:
 			ch = _peek();
 			# consume decimal token
 			if Codepoint.UNDERSCORE == ch:
-				_report_char_error("Unexpected underscore after decimal point.");
+				_push_error("Unexpected underscore after decimal point.");
 				has_error = true;
 			previous_was_underscore = false;
 			while Codepoint.is_digit(ch) or ch == Codepoint.UNDERSCORE:
 				ch = _peek();
 				if ch == Codepoint.UNDERSCORE:
 					if previous_was_underscore:
-						_report_char_error("Multiple underscores cannot be adjacent in a numeric literal.");
+						_push_error("Multiple underscores cannot be adjacent in a numeric literal.");
 						# not a fatal error
 					previous_was_underscore = true;
 				else:
@@ -402,12 +388,12 @@ func _number() -> Token:
 			_advance();
 		# consume exponent digits
 		if not Codepoint.is_digit(_current_char):
-			_report_char_error("Expected digit after exponent.");
+			_push_error("Expected digit after exponent.");
 		previous_was_underscore = false;
 		while Codepoint.is_digit(_current_char) or _current_char == Codepoint.UNDERSCORE:
 			if _current_char == Codepoint.UNDERSCORE:
 				if previous_was_underscore:
-					_report_char_error("Multiple underscores cannot be adjacent in a numeric literal.");
+					_push_error("Multiple underscores cannot be adjacent in a numeric literal.");
 					# not a fatal error
 				previous_was_underscore = true;
 			else:
@@ -415,15 +401,15 @@ func _number() -> Token:
 			_advance();
 	
 	if need_digits:
-		_report_char_error("Expected %s digit after \"0%c\"" %
+		_push_error("Expected %s digit after \"0%c\"" %
 			["hexadecimal" if base == 16 else "binary", "x" if base == 16 else "b"]);
 
 	if not has_error and has_decimal and _current_char == Codepoint.PERIOD and _peek(1) != Codepoint.PERIOD:
-		_report_char_error("Cannot use a decimal point twice in a _number.");
+		_push_error("Cannot use a decimal point twice in a _number.");
 		has_error = true;
 	elif Codepoint.is_unicode_identifier_start(_current_char) or Codepoint.is_unicode_identifier_continue(_current_char):
 		# letter at the end of the _number.
-		_report_error("Invalid numeric notation.");
+		_push_error("Invalid numeric notation.");
 	
 	var len: int = _index - _start_index;
 	var number_str = _source.substr(_start_index, len).replace("_", "");
@@ -476,27 +462,27 @@ func _string() -> Token:
 	while true:
 		# consume actual _string
 		if _is_at_end():
-			return _make_error("Unterminated _string.");
+			return _push_error("Unterminated _string.");
 		if Codepoint.is_invisible_direction_control(_current_char):
 			if is_raw:
-				_report_char_error("Invisible text direction control character present in the _string, use regular _string literal instead of r-_string.");
+				_push_error("Invisible text direction control character present in the _string, use regular _string literal instead of r-_string.");
 			else:
-				_report_char_error("Invisible text direction control character present in the _string, escape it (\"\\u%s\") to avoid confusion."
+				_push_error("Invisible text direction control character present in the _string, escape it (\"\\u%s\") to avoid confusion."
 					% String.num_int64(_current_char, 16));
 		if _current_char == Codepoint.BACKSLASH:
 			# escape pattern
 			_advance();
 			if _is_at_end():
-				return _make_error("Unterminated _string.");
+				return _push_error("Unterminated _string.");
 			if is_raw:
 				if _consume_if_eq(quote_char):
 					if _is_at_end():
-						return _make_error("Unterminated _string.");
+						return _push_error("Unterminated _string.");
 					result += "\\";
 					result += String.chr(quote_char);
 				elif _consume_if_eq(Codepoint.BACKSLASH):
 					if _is_at_end():
-						return _make_error("Unterminated _string.");
+						return _push_error("Unterminated _string.");
 					result += "\\";
 					result += "\\";
 				else:
@@ -506,7 +492,7 @@ func _string() -> Token:
 			var escape_char: int = _current_char;
 			_advance();
 			if _is_at_end():
-				return _make_error("Unterminated _string.");
+				return _push_error("Unterminated _string.");
 			## `Codepoint` constant or unicode 8/16 codepoint value
 			var escaped: int = 0;
 			var valid_escape := true;
@@ -526,7 +512,7 @@ func _string() -> Token:
 					var hex_len: int = 6 if escape_char == Codepoint.UP_U else 4;
 					for i in range(hex_len):
 						if _is_at_end():
-							return _make_error("Unterminated _string.");
+							return _push_error("Unterminated _string.");
 						
 						var digit: int = _current_char;
 						var value: int = 0;
@@ -537,7 +523,7 @@ func _string() -> Token:
 						elif digit >= Codepoint.UP_A and digit <= Codepoint.UP_F:
 							value = (digit - Codepoint.UP_A) + 10;
 						else:
-							_report_char_error("Invalid hexadecimal digit in unicode escape sequence");
+							_push_error("Invalid hexadecimal digit in unicode escape sequence");
 							valid_escape = false;
 							break ; # for i in range(hex_len)
 						
@@ -557,10 +543,7 @@ func _string() -> Token:
 					# to not add it to the _string
 					valid_escape = false;
 				_:
-					var error: Token = _make_error("Invalid escape in _string.");
-					error.start_column = _column - 2;
-					error.leftmost_column = error.start_column;
-					_report_error(error);
+					_push_error("Invalid escape in _string.");
 					valid_escape = false;
 
 			if valid_escape:
@@ -570,28 +553,19 @@ func _string() -> Token:
 						prev_pos = _column - 2;
 						continue ; # while true
 					else:
-						var error: Token = _make_error("Invalid UTF-16 sequence in _string, unpaired lead surrogate.");
-						error.start_column = prev_pos;
-						error.leftmost_column = error.start_column;
-						_report_error(error);
+						_push_error("Invalid UTF-16 sequence in _string, unpaired lead surrogate.");
 						valid_escape = false;
 						prev_char = Codepoint.NULL;
 				elif (escaped & 0xfffffc00) == 0xdc00:
 					if prev_char == Codepoint.NULL:
-						var error: Token = _make_error("Invalid UTF-16 sequence in _string, unpaired trail surrogate.");
-						error.start_column = _column - 2;
-						error.leftmost_column = error.start_column;
-						_report_error(error);
+						_push_error("Invalid UTF-16 sequence in _string, unpaired trail surrogate.");
 						valid_escape = false;
 					else:
 						# 0x35fdc00 == ((0xd800 << 10UL) + 0xdc00 - 0x10000)
 						escaped = (prev_char << 0xA) + escaped - 0x35fdc00;
 						prev_char = Codepoint.NULL;
 				if prev_char != Codepoint.NULL:
-					var error: Token = _make_error("Invalid UTF-16 sequence in _string, unpaired lead surrogate.");
-					error.start_column = prev_pos;
-					error.leftmost_column = error.start_column;
-					_report_error(error);
+					_push_error("Invalid UTF-16 sequence in _string, unpaired lead surrogate.");
 					prev_char = Codepoint.NULL;
 			
 			if valid_escape:
@@ -599,10 +573,7 @@ func _string() -> Token:
 			
 		elif _current_char == quote_char:
 			if prev_char != Codepoint.NULL:
-				var error: Token = _make_error("Invalid UTF-16 sequence in _string, unpaired lead surrogate.");
-				error.start_column = prev_pos;
-				error.leftmost_column = error.start_column;
-				_report_error(error);
+				_push_error("Invalid UTF-16 sequence in _string, unpaired lead surrogate.");
 				prev_char = Codepoint.NULL;
 			_advance();
 			if is_multiline:
@@ -619,10 +590,7 @@ func _string() -> Token:
 
 		else:
 			if prev_char != Codepoint.NULL:
-				var error: Token = _make_error("Invalid UTF-16 sequence in _string, unpaired lead surrogate.");
-				error.start_column = prev_pos;
-				error.leftmost_column = error.start_column;
-				_report_error(error);
+				_push_error("Invalid UTF-16 sequence in _string, unpaired lead surrogate.");
 				prev_char = Codepoint.NULL;
 			result += String.chr(_current_char);
 			_advance();
@@ -630,10 +598,7 @@ func _string() -> Token:
 				_newline(false);
 		
 	if prev_char != Codepoint.NULL:
-		var error: Token = _make_error("Invalid UTF-16 sequence in _string, unpaired lead surrogate.");
-		error.start_column = prev_pos;
-		error.leftmost_column = error.start_column;
-		_report_error(error);
+		_push_error("Invalid UTF-16 sequence in _string, unpaired lead surrogate.");
 		prev_char = Codepoint.NULL;
 		
 	match type:
@@ -672,7 +637,7 @@ func _check_indent() -> void:
 		if _current_char == Codepoint.CARRIAGE_RETURN:
 			_advance();
 			if _current_char != Codepoint.LINE_FEED:
-				_report_error("Stray carriage return character in source code.");
+				_push_error("Stray carriage return character in source code.");
 		if _current_char == Codepoint.LINE_FEED:
 			# empty new line, keep going
 			_advance();
@@ -701,7 +666,7 @@ func _check_indent() -> void:
 		if _current_char == Codepoint.CARRIAGE_RETURN:
 			_advance();
 			if _current_char != Codepoint.LINE_FEED:
-				_report_error("Stray carriage return character in source code.");
+				_push_error("Stray carriage return character in source code.");
 		if _current_char == Codepoint.LINE_FEED:
 			# empty line, keep going
 			_advance();
@@ -726,11 +691,7 @@ func _check_indent() -> void:
 			continue ;
 		
 		if mixed and not _line_continuation and not _multiline_mode:
-			var error: Token = _make_error("Mixed indentation (spaces and tabs) not allowed.");
-			error.start_column = 1;
-			error.leftmost_column = 1;
-			error.rightmost_column = _column;
-			_report_error(error);
+			_push_error("Mixed indentation (spaces and tabs) not allowed.");
 		
 		if _line_continuation or _multiline_mode:
 			# already cleared whitespace at beginning of line
@@ -741,13 +702,8 @@ func _check_indent() -> void:
 			# first time indenting, choose character now
 			_indent_char = current_indent_char;
 		elif current_indent_char != _indent_char:
-			var error: Token = _make_error("Used %s character for indentation instead of %s as used before in the file." %
+			_push_error("Used %s character for indentation instead of %s as used before in the file." %
 				[_get_indent_char_name(current_indent_char), _get_indent_char_name(_indent_char)]);
-			error.start_line = _line;
-			error.start_column = 1;
-			error.leftmost_column = 1;
-			error.rightmost_column = _column;
-			_report_error(error);
 
 		# check if indent or dedent
 		var previous_indent: int = 0;
@@ -763,19 +719,13 @@ func _check_indent() -> void:
 		else:
 			# indent decrease
 			if _indent_level() == 0:
-				_report_error("Tokenizer bug: trying to dedent without previous indent.");
+				_push_error("Tokenizer bug: trying to dedent without previous indent.");
 				return ;
 			while _indent_level() > 0 and _indent_stack.a.back() > indent_count:
 				_indent_stack.a.pop_back();
 				_pending_indents -= 1;
 			if (_indent_level() > 0 and _indent_stack.a.back() != indent_count) or (_indent_level() == 0 and indent_count != 0):
-				var error: Token = _make_error("Unindent doesn't match any outer indentation level.");
-				error.start_line = _line;
-				error.start_column = 1;
-				error.leftmost_column = 1;
-				error.end_column = _column + 1;
-				error.rightmost_column = _column + 1;
-				_report_error(error);
+				_push_error("Unindent doesn't match any outer indentation level.");
 				# keep going to report more errors
 				_indent_stack.a.push_back(indent_count);
 		break ;
@@ -803,7 +753,7 @@ func _skip_whitespace() -> void:
 			Codepoint.CARRIAGE_RETURN:
 				_advance();
 				if _current_char != Codepoint.LINE_FEED:
-					_report_error("Stray carriage return character in source code.");
+					_push_error("Stray carriage return character in source code.");
 					return ;
 			Codepoint.LINE_FEED:
 				_advance();
@@ -871,10 +821,10 @@ func scan() -> Token:
 		# line continuation with backslash
 		if _current_char == Codepoint.CARRIAGE_RETURN:
 			if _peek(1) != Codepoint.LINE_FEED:
-				return _make_error("Unexpected carriage return character.");
+				return _push_error("Unexpected carriage return character.");
 			_advance();
 		if _current_char != Codepoint.LINE_FEED:
-			return _make_error("Expected new line after \"\\\".");
+			return _push_error("Expected new line after \"\\\".");
 		_advance();
 		_newline(false);
 		_line_continuation = true;
@@ -1019,9 +969,6 @@ func scan() -> Token:
 			return _make_token(Type.GREATER);
 		_:
 			if Codepoint.is_whitespace(_previous_char):
-				return _make_error("Invalid white space character U+%04X." % _previous_char);
+				return _push_error("Invalid white space character U+%04X." % _previous_char);
 			else:
-				return _make_error("Invalid character \"%c\" (U+%04X)." % [_current_char, _current_char]);
-
-func _init():
-	pass ;
+				return _push_error("Invalid character \"%c\" (U+%04X)." % [_current_char, _current_char]);
