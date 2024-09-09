@@ -39,8 +39,8 @@ const LOG_NAME = "ModLoader:Store"
 # 		}
 # 	}
 # }
-
-var callable_stack := {}
+var any_mod_hooked := false
+var modding_hooks := {}
 
 # Order for mods to be loaded in, set by `get_load_order`
 var mod_load_order := []
